@@ -50,12 +50,11 @@ CHAINS: list[Chain] = [
 _CHAIN_BY_NETWORK = {c.network: c for c in CHAINS}
 
 
-def chain_for(network: str) -> Chain:
-    return _CHAIN_BY_NETWORK[network]
-
-
 def explorer_url(network: str, tx: str) -> str:
-    return chain_for(network).explorer(tx)
+    # Fall back to the bare tx id for an unknown network rather than crashing a caller
+    # (e.g. /v1/receipts rendering a stored row, or a client printing a settlement).
+    chain = _CHAIN_BY_NETWORK.get(network)
+    return chain.explorer(tx) if chain else tx
 
 
 class Settings(BaseSettings):

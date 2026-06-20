@@ -51,10 +51,12 @@ async def main() -> None:
     conn = await asyncpg.connect(url)
     try:
         await conn.execute(SCHEMA)
-        await conn.execute("TRUNCATE companies")
-        await conn.copy_records_to_table(
-            "companies", records=rows, columns=["ticker", "cik", "title"]
-        )
+        # Atomic so a failed COPY rolls back the TRUNCATE instead of leaving the table empty.
+        async with conn.transaction():
+            await conn.execute("TRUNCATE companies")
+            await conn.copy_records_to_table(
+                "companies", records=rows, columns=["ticker", "cik", "title"]
+            )
         count = await conn.fetchval("SELECT count(*) FROM companies")
         print(f"companies table now holds {count} rows")
     finally:

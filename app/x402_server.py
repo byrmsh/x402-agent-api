@@ -64,7 +64,9 @@ async def _on_after_settle(ctx: SettleResultContext) -> None:
     """Persist a settlement receipt after a payment settles on-chain."""
     res = ctx.result
     req = ctx.requirements
-    amount = res.amount or (req.amount if req else None)
+    # req.get_amount() (not req.amount) so a V1 requirements object, which stores it under
+    # max_amount_required, does not raise.
+    amount = res.amount or (req.get_amount() if req else None)
     logger.info(
         "settled %s on %s (payer=%s amount=%s) tx=%s",
         req.pay_to if req else "?",

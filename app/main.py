@@ -34,9 +34,11 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await init_db(settings.database_url)
-        async with mcp.session_manager.run():
-            yield
-        await close_db()
+        try:
+            async with mcp.session_manager.run():
+                yield
+        finally:
+            await close_db()
 
     app = FastAPI(title="x402-agent-api", lifespan=lifespan)
     app.add_middleware(PaymentMiddlewareASGI, routes=build_routes(), server=server)
