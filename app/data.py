@@ -25,6 +25,11 @@ def _cik_str(cik: int) -> str:
     return f"CIK{cik:010d}"
 
 
+def _like_escape(s: str) -> str:
+    """Escape ILIKE wildcards so user input matches literally; without this q='%' matches every row."""
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _enrich(row: dict[str, Any]) -> dict[str, Any]:
     cik = row["cik"]
     cik_str = _cik_str(cik)
@@ -70,13 +75,13 @@ async def search_companies(q: str, limit: int) -> list[dict[str, Any]]:
         return [_enrich(r) for r in hits[:limit]]
     async with pool.acquire() as conn:
         recs = await conn.fetch(
-            """
+            r"""
             SELECT ticker, cik, title FROM companies
-            WHERE ticker ILIKE $1 || '%' OR title ILIKE '%' || $1 || '%'
+            WHERE ticker ILIKE $1 || '%' ESCAPE '\' OR title ILIKE '%' || $1 || '%' ESCAPE '\'
             ORDER BY ticker
             LIMIT $2
             """,
-            q,
+            _like_escape(q),
             limit,
         )
     return [_enrich(dict(r)) for r in recs]

@@ -56,6 +56,12 @@ async def test_get_company_reads_from_postgres(pool):
     assert record["cik_str"] == "CIK0000999001"
 
 
+async def test_search_treats_wildcards_literally(pool):
+    # q='%' must not match every row; with ILIKE escaping it matches only literal '%'.
+    results = await data.search_companies("%", limit=50)
+    assert all("%" in r["ticker"] or "%" in r["title"] for r in results)
+
+
 async def test_record_and_list_settlement(pool):
     await record_settlement(
         transaction=TEST_TX,
