@@ -1,0 +1,35 @@
+# Local stack: the API (REST + mounted MCP) plus Postgres. In production the API runs on
+# Cloud Run and DATABASE_URL points at Neon instead of this container.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: x402
+      POSTGRES_DB: x402
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # host.docker.internal lets the container reach the host; inside compose we use the service name.
+      DATABASE_URL: postgresql://postgres:x402@db:5432/x402
+      FACILITATOR_URL: https://x402.org/facilitator
+      EVM_PAY_TO: ${EVM_PAY_TO}
+      SVM_PAY_TO: ${SVM_PAY_TO}
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
