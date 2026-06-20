@@ -1,10 +1,13 @@
-"""Configuration and verified chain constants for the x402 agent-payable API.
+"""Configuration and the registry of chains the service can be paid on.
 
 Testnet only. Every chain constant here was verified against installed x402 2.13.1
 (see docs/installed-truth.md). Mints/addresses are Base Sepolia + Solana devnet.
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,17 +19,43 @@ SVM_NETWORK = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"  # Solana devnet
 EVM_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"  # Base Sepolia USDC
 SVM_USDC = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"  # Solana devnet USDC
 
-# --- Explorers (the ?cluster=devnet is mandatory for Solana or it shows mainnet) ---
+
 def evm_explorer(tx: str) -> str:
     return f"https://sepolia.basescan.org/tx/{tx}"
 
 
 def svm_explorer(sig: str) -> str:
+    # The ?cluster=devnet is mandatory or the explorer silently shows mainnet.
     return f"https://explorer.solana.com/tx/{sig}?cluster=devnet"
 
 
+@dataclass(frozen=True)
+class Chain:
+    """A testnet chain the service accepts payment on. `pay_to_field` names the Settings attribute
+    holding this chain's receiving address; an empty value means the chain is not offered."""
+
+    network: str
+    usdc: str
+    label: str
+    explorer: Callable[[str], str]
+    pay_to_field: str
+
+
+# Order matters: the MCP payment wrapper settles accepts[0], so the first configured chain is the
+# one MCP clients pay on.
+CHAINS: list[Chain] = [
+    Chain(EVM_NETWORK, EVM_USDC, "Base Sepolia", evm_explorer, "evm_pay_to"),
+    Chain(SVM_NETWORK, SVM_USDC, "Solana devnet", svm_explorer, "svm_pay_to"),
+]
+_CHAIN_BY_NETWORK = {c.network: c for c in CHAINS}
+
+
+def chain_for(network: str) -> Chain:
+    return _CHAIN_BY_NETWORK[network]
+
+
 def explorer_url(network: str, tx: str) -> str:
-    return svm_explorer(tx) if network.startswith("solana:") else evm_explorer(tx)
+    return chain_for(network).explorer(tx)
 
 
 class Settings(BaseSettings):
@@ -56,3 +85,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def configured_chains() -> list[Chain]:
+    """The chains with a receiving wallet set, in CHAINS order."""
+    return [c for c in CHAINS if getattr(settings, c.pay_to_field)]
+
+
+def pay_to(chain: Chain) -> str:
+    return getattr(settings, chain.pay_to_field)

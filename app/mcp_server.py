@@ -22,31 +22,24 @@ from x402.mcp import create_payment_wrapper
 from x402.schemas.config import ResourceConfig
 from x402.schemas.payments import ResourceInfo
 
-from .config import EVM_NETWORK, SVM_NETWORK, settings
+from .config import configured_chains, pay_to, settings
 from .data import get_company, search_companies
-from .x402_server import build_server
 
 
 def _accepts(server, price: str):
     """One PaymentRequirements per configured chain (EVM first, since the wrapper settles accepts[0])."""
     accepts = []
-    if settings.evm_pay_to:
+    for c in configured_chains():
         accepts += server.build_payment_requirements(
-            ResourceConfig(scheme="exact", pay_to=settings.evm_pay_to, price=price, network=EVM_NETWORK)
-        )
-    if settings.svm_pay_to:
-        accepts += server.build_payment_requirements(
-            ResourceConfig(scheme="exact", pay_to=settings.svm_pay_to, price=price, network=SVM_NETWORK)
+            ResourceConfig(scheme="exact", pay_to=pay_to(c), price=price, network=c.network)
         )
     if not accepts:
         raise RuntimeError("No receiving wallet configured: set EVM_PAY_TO and/or SVM_PAY_TO")
     return accepts
 
 
-def build_mcp() -> FastMCP:
-    server = build_server()
-    server.initialize()  # sync; loads facilitator-supported kinds before building requirements
-
+def build_mcp(server) -> FastMCP:
+    """Wrap the data tools with x402 payment. `server` must already be built and initialized."""
     mcp = FastMCP("x402-agent-api", stateless_http=True)
 
     paid_lookup = create_payment_wrapper(

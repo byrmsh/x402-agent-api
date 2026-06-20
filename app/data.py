@@ -27,13 +27,14 @@ def _cik_str(cik: int) -> str:
 
 def _enrich(row: dict[str, Any]) -> dict[str, Any]:
     cik = row["cik"]
+    cik_str = _cik_str(cik)
     return {
         "ticker": row["ticker"],
         "cik": cik,
-        "cik_str": _cik_str(cik),
+        "cik_str": cik_str,
         "title": row["title"],
         "filings_url": f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type=10-K",
-        "facts_api": f"https://data.sec.gov/api/xbrl/companyfacts/{_cik_str(cik)}.json",
+        "facts_api": f"https://data.sec.gov/api/xbrl/companyfacts/{cik_str}.json",
     }
 
 
