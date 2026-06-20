@@ -16,26 +16,21 @@ from x402.mechanisms.svm.exact import ExactSvmServerScheme
 from x402.schemas.hooks import SettleResultContext
 from x402.server import x402ResourceServer
 
-from .config import EVM_NETWORK, SVM_NETWORK, settings
+from .config import EVM_NETWORK, SVM_NETWORK, configured_chains, pay_to, settings
+from .receipts import record_settlement
 
 logger = logging.getLogger("x402_agent_api")
 
+_SCHEME_FACTORIES = {EVM_NETWORK: ExactEvmServerScheme, SVM_NETWORK: ExactSvmServerScheme}
+
 
 def _accepts(price: str) -> list[PaymentOption]:
-    """One PaymentOption per chain that has a configured receiving wallet.
-
-    A route with both options is genuinely dual-chain: the middleware settles on whichever
-    chain the client paid on.
-    """
-    options: list[PaymentOption] = []
-    if settings.evm_pay_to:
-        options.append(
-            PaymentOption(scheme="exact", pay_to=settings.evm_pay_to, price=price, network=EVM_NETWORK)
-        )
-    if settings.svm_pay_to:
-        options.append(
-            PaymentOption(scheme="exact", pay_to=settings.svm_pay_to, price=price, network=SVM_NETWORK)
-        )
+    """One PaymentOption per configured chain. A route with both is genuinely dual-chain: the
+    middleware settles on whichever chain the client paid on."""
+    options = [
+        PaymentOption(scheme="exact", pay_to=pay_to(c), price=price, network=c.network)
+        for c in configured_chains()
+    ]
     if not options:
         raise RuntimeError("No receiving wallet configured: set EVM_PAY_TO and/or SVM_PAY_TO")
     return options
@@ -68,10 +63,11 @@ def _resource(ctx: SettleResultContext) -> str | None:
 async def _on_after_settle(ctx: SettleResultContext) -> None:
     """Persist a settlement receipt after a payment settles on-chain."""
     res = ctx.result
-    amount = res.amount or (ctx.requirements.amount if ctx.requirements else None)
+    req = ctx.requirements
+    amount = res.amount or (req.amount if req else None)
     logger.info(
         "settled %s on %s (payer=%s amount=%s) tx=%s",
-        ctx.requirements.pay_to if ctx.requirements else "?",
+        req.pay_to if req else "?",
         res.network,
         res.payer,
         amount,
@@ -79,23 +75,21 @@ async def _on_after_settle(ctx: SettleResultContext) -> None:
     )
     if not settings.database_url:
         return
-    from .receipts import record_settlement
-
     await record_settlement(
         transaction=res.transaction,
         network=res.network,
         payer=res.payer,
         amount=amount,
-        pay_to=ctx.requirements.pay_to if ctx.requirements else None,
+        pay_to=req.pay_to if req else None,
         resource=_resource(ctx),
     )
 
 
 def build_server() -> x402ResourceServer:
-    """Resource server bound to the facilitator with both chain schemes registered."""
+    """Resource server bound to the facilitator, with a scheme registered per configured chain."""
     facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=settings.facilitator_url))
     server = x402ResourceServer(facilitator)
-    server.register(EVM_NETWORK, ExactEvmServerScheme())
-    server.register(SVM_NETWORK, ExactSvmServerScheme())
+    for c in configured_chains():
+        server.register(c.network, _SCHEME_FACTORIES[c.network]())
     server.on_after_settle(_on_after_settle)
     return server

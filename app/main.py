@@ -23,8 +23,13 @@ logging.basicConfig(level=logging.INFO)
 
 
 def create_app() -> FastAPI:
-    mcp = build_mcp()
-    mcp_app = mcp.streamable_http_app()  # creates the session manager (referenced in lifespan)
+    # One resource server backs both surfaces. initialize() (a sync facilitator round-trip) is
+    # required before the MCP wrapper builds its payment requirements.
+    server = build_server()
+    server.initialize()
+
+    mcp = build_mcp(server)
+    mcp_app = mcp.streamable_http_app()  # lazily creates the session manager run() needs below
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -34,7 +39,7 @@ def create_app() -> FastAPI:
         await close_db()
 
     app = FastAPI(title="x402-agent-api", lifespan=lifespan)
-    app.add_middleware(PaymentMiddlewareASGI, routes=build_routes(), server=build_server())
+    app.add_middleware(PaymentMiddlewareASGI, routes=build_routes(), server=server)
     app.include_router(router)
     # Mount at root so the MCP endpoint is exactly /mcp (FastAPI's own routes are matched first,
     # since they are registered before this catch-all mount).

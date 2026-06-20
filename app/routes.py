@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from .config import EVM_NETWORK, EVM_USDC, SVM_NETWORK, SVM_USDC, settings
+from .config import configured_chains, settings
 from .data import get_company, search_companies
 from .receipts import list_settlements
 
@@ -27,8 +27,7 @@ async def catalog() -> dict:
         "service": "x402 agent-payable company reference API",
         "dataset": "SEC EDGAR company tickers (ticker, CIK, title)",
         "chains": [
-            {"network": EVM_NETWORK, "label": "Base Sepolia", "asset": EVM_USDC},
-            {"network": SVM_NETWORK, "label": "Solana devnet", "asset": SVM_USDC},
+            {"network": c.network, "label": c.label, "asset": c.usdc} for c in configured_chains()
         ],
         "endpoints": [
             {"path": "/v1/company/{ticker}", "price": settings.price_lookup, "paid": True},
