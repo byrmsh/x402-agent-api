@@ -87,6 +87,13 @@ Client side (`client/agent_demo.py`):
   `getattr(result, "_meta", {})`. Re-expose `.meta` as `_meta` on the result or the settlement is silently dropped.
 - Mounting on FastAPI: `app.mount("/", mcp.streamable_http_app())` and run `mcp.session_manager.run()` inside the
   host lifespan; the MCP endpoint is then exactly `/mcp` (default `streamable_http_path`).
+- **Behind a real hostname the mounted MCP app 421s every request unless transport security is set.** `FastMCP`
+  defaults its host to `127.0.0.1`, which auto-builds `TransportSecuritySettings(enable_dns_rebinding_protection=True,
+  allowed_hosts=["127.0.0.1:*","localhost:*","[::1]:*"])` (`mcp/server/fastmcp/server.py:178`). Deployed (Cloud Run),
+  the Host header is the public domain, absent from that list, so every POST gets `421 Invalid Host header`
+  (`mcp/server/transport_security.py:120`) while localhost keeps working. Pass
+  `transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False)` to `FastMCP(...)`: the guard
+  targets browser DNS rebinding against localhost servers, not a public TLS API called by arbitrary agents.
 - payment carried in MCP `_meta` keys `x402/payment` (request) / `x402/payment-response` (response).
 
 ## Chain constants (re-verify mints before mainnet; testnet only here)
