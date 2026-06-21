@@ -9,13 +9,32 @@ An agent requests a resource, gets a 402 with the price and accepted chains, sig
 payment, and retries. A facilitator verifies and settles the payment on-chain and pays the gas, so
 the agent spends only USDC. Each settlement is recorded as a public, on-chain-linked receipt.
 
+## Live
+
+Deployed on Cloud Run: **https://upwork-x402-agent-api-874666638466.europe-west1.run.app**
+
+```bash
+# what is sold, on which chains, at what price (free)
+curl -s https://upwork-x402-agent-api-874666638466.europe-west1.run.app/v1/catalog
+
+# a paid route with no payment returns a 402 challenge listing both chains
+curl -s https://upwork-x402-agent-api-874666638466.europe-west1.run.app/v1/company/AAPL
+
+# the on-chain audit trail of payments the service has settled
+curl -s https://upwork-x402-agent-api-874666638466.europe-west1.run.app/v1/receipts
+```
+
 ## Proven live (real testnet settlements)
+
+Every settlement below was made by a client paying the deployed service above, and stays queryable
+at `/v1/receipts`.
 
 | Surface | Chain | Transaction |
 | --- | --- | --- |
-| REST `GET /v1/company/AAPL` | Base Sepolia | [`0xef39da1e`](https://sepolia.basescan.org/tx/0xef39da1e2b213d8d26ae528a6a5987b99adb0b0ee5d2f1b8562162a93ae8ea79) |
-| REST `GET /v1/company/MSFT` | Solana devnet (gasless) | [`3beBZXav`](https://explorer.solana.com/tx/3beBZXavcD5Z6zqSiZfxiv3Y5zhaa38i8pLZLj5k1rP8eZ4rX2UNwe4soTD8e5WJisJU2mWzVyrE68opjwCufg5M?cluster=devnet) |
-| MCP tool `get_company` | Base Sepolia | [`0xc62f5961`](https://sepolia.basescan.org/tx/0xc62f5961cbc7f3ddba1569db5e55f807fb4a67809d6fba19f1c40cba53678b1b) |
+| REST `GET /v1/company/AMZN` | Base Sepolia | [`0x7c6320ff`](https://sepolia.basescan.org/tx/0x7c6320ffb0cd040e78d181967dfe441ba4d5f19ca2b95080dd5d980184bae718) |
+| REST `GET /v1/company/JPM` | Solana devnet (gasless) | [`5bvGMtwQ`](https://explorer.solana.com/tx/5bvGMtwQGwfFvtE6QPYwszciRgsXZw2wV2NFcYAGto5Wu9B4bjP4Ph3r6DcBNb5dyoefcPkNLoCfhjZWpWo9Bv9p?cluster=devnet) |
+| REST `GET /v1/search?q=bancorp` | Base Sepolia | [`0xd088a917`](https://sepolia.basescan.org/tx/0xd088a9176dafe700641f52f2db0b855a61217c129f4afbf971ae6d93868d8932) |
+| MCP tool `get_company` | Base Sepolia | [`0xf5e4b0b8`](https://sepolia.basescan.org/tx/0xf5e4b0b8f104332090b32292ed48d7c8f49d1952b75118ba47da5e02d4b6a6d1) |
 
 On Solana the facilitator is the transaction fee payer, so the paying agent needs no SOL at all.
 
@@ -24,7 +43,7 @@ On Solana the facilitator is the transaction fee payer, so the paying agent need
 One FastAPI app, two payment-gated surfaces backed by the same x402 rails:
 
 - **REST** (`app/routes.py`): `PaymentMiddlewareASGI` gates the paid routes. A 402 lists one payment
-  option per configured chain, so a single endpoint is genuinely dual-chain.
+  option per configured chain, so one endpoint serves both chains.
 - **MCP** (`app/mcp_server.py`): a `FastMCP` server mounted at `/mcp` over streamable HTTP, each tool
   wrapped by `x402.mcp.create_payment_wrapper`. An agent runtime discovers, pays for, and calls the
   tools natively.
@@ -98,14 +117,16 @@ uv run pytest          # unit + Postgres integration (the DB tests skip if no DA
 
 ## Deploy
 
-The image runs `uvicorn app.main:app` and honors Cloud Run's `$PORT`.
+Live on Cloud Run. The image runs `uvicorn app.main:app --proxy-headers` so the 402 challenge's
+resource URL reflects the public https origin, and honors Cloud Run's `$PORT`.
 
 ```bash
 docker build -t x402-agent-api .
 ```
 
 In production set `DATABASE_URL` to a Neon connection string and `EVM_PAY_TO` / `SVM_PAY_TO` to your
-receiving wallets. `docker compose up` runs the whole stack (API plus Postgres) locally.
+receiving wallets (the receiving addresses are public; no payer keys live server-side). `docker
+compose up` runs the whole stack (API plus Postgres) locally.
 
 ## Notes
 
