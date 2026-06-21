@@ -19,4 +19,6 @@ RUN uv sync --frozen --no-dev
 ENV PORT=8080
 EXPOSE 8080
 
-CMD ["sh", "-c", "uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# --proxy-headers trusts the platform's X-Forwarded-Proto so request URLs (and the x402
+# challenge's resource.url) reflect the public https origin rather than the internal http hop.
+CMD ["sh", "-c", "uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips=*"]
