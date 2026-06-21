@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from x402.mcp import create_payment_wrapper
 from x402.schemas.config import ResourceConfig
 from x402.schemas.payments import ResourceInfo
@@ -40,7 +41,15 @@ def _accepts(server, price: str):
 
 def build_mcp(server) -> FastMCP:
     """Wrap the data tools with x402 payment. `server` must already be built and initialized."""
-    mcp = FastMCP("x402-agent-api", stateless_http=True)
+    # FastMCP defaults its host to 127.0.0.1, which auto-enables DNS-rebinding protection with a
+    # localhost-only allowed_hosts list; behind a real hostname (Cloud Run) that 421s every request.
+    # That guard protects localhost servers from browser DNS rebinding, not the threat model of a
+    # public TLS API called by arbitrary agents, so disable it rather than pin to the deploy URL.
+    mcp = FastMCP(
+        "x402-agent-api",
+        stateless_http=True,
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
 
     paid_lookup = create_payment_wrapper(
         server,
